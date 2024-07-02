@@ -1,4 +1,16 @@
 ### Hi there 👋
+/* ===============================================================================
+
+     Plataforma de Treino de Futebol
+
+     Utilizando Display Nextion TFT NX4827P043 com Arduino MEGA 2560
+
+     Implementação para defesa de Tese de Doutorado - FEF
+
+     Autor: Eng. Lucas Romano
+
+  ============================================================================== 
+*/
 
 <!--
 **LRomano21/LRomano21** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
