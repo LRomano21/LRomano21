@@ -1,0 +1,1341 @@
+/* ===============================================================================
+
+     Plataforma de Treino de Futebol
+
+     Utilizando Display Nextion TFT NX4827P043 com Arduino MEGA 2560
+
+     Implementação para defesa de Tese de Doutorado - FEF
+
+     Autor: Eng. Lucas Romano
+
+  ============================================================================== 
+*/
+
+=============================================================================== 
+*/
+
+// ===============================================================================
+// --- Biblioteca Auxiliar ---
+//-------------------------------------------------------------------------------
+#include <Arduino.h>
+#include "Nextion.h"  //biblioteca Nextion
+#include <SD.h>       //biblioteca para cartão de memória
+#include "binary.h"   //biblioteca matriz de led
+#include <NewPing.h>  // biblioteca sensor ultrasônico utilizado nos alvos
+
+// ===============================================================================
+// --- Mapeamento de Hardware ---
+
+// definições dos botões se seleção de modo e nível de dificuldade
+
+#define botao_chute 2  // botao do sensor de chute
+#define botao_alvo 3   // Pino de saída digital do LDR para acionar o chute
+// definições dos alvos
+#define led_alvo_equerdo 42  // Pino digital do indicador de alvo da esquerda
+#define alvo_E1 4            // Pino digital do alvo esquerda E-1
+#define alvo_E2 5            // Pino digital do alvo da esquerda E 0
+#define alvo_E3 6            // Pino digital do alvo da esquerda E+1
+#define led_alvo_direito 49  // Pino digital do indiacador de alvo da direita
+#define alvo_D1 7            // Pino digital do alvo direita D-1
+#define alvo_D2 8            // Pino digital do alvo direita D 0
+#define alvo_D3 9            // Pino digital do alvo direita D+1
+
+#define matriz_led_01 26  // Pino digital da matriz de led 01
+#define matriz_led_02 27  // Pino digital da matriz de led 02
+#define matriz_led_03 28  // Pino digital da matriz de led 03
+#define matriz_led_04 29  // Pino digital da matriz de led 04
+#define matriz_led_05 30  // Pino digital da matriz de led 05
+#define matriz_led_06 31  // Pino digital da matriz de led 06  ////// 65
+#define matriz_led_07 32  // Pino digital da matriz de led 07
+#define matriz_led_08 33  // Pino digital da matriz de led 08
+#define matriz_led_09 34  // Pino digital da matriz de led 09
+#define matriz_led_10 35  // Pino digital da matriz de led 10
+
+#define sensor_alvo_E1_TRIGGER_PIN 36  // Pino analógico do sensor do alvo direita E-1
+#define sensor_alvo_E1_ECHO_PIN 37     // Pino analógico do sensor do alvo direita E-1
+#define sensor_alvo_E2_TRIGGER_PIN 38  // Pino analógico do sensor do alvo direita E 0
+#define sensor_alvo_E2_ECHO_PIN 39     // Pino analógico do sensor do alvo direita E 0
+#define sensor_alvo_E3_TRIGGER_PIN 40  // Pino analógico do sensor do alvo direita E+1
+#define sensor_alvo_E3_ECHO_PIN 41     // Pino analógico do sensor do alvo direita E+1
+#define sensor_alvo_D1_TRIGGER_PIN 47  // Pino analógico do sensor do alvo direita D-1
+#define sensor_alvo_D1_ECHO_PIN 48     // Pino analógico do sensor do alvo direita D-1
+#define sensor_alvo_D2_TRIGGER_PIN 45  // Pino analógico do sensor do alvo direita D 0
+#define sensor_alvo_D2_ECHO_PIN 46     // Pino analógico do sensor do alvo direita D 0
+#define sensor_alvo_D3_TRIGGER_PIN 43  // Pino analógico do sensor do alvo direita D+1
+#define sensor_alvo_D3_ECHO_PIN 44     // Pino analógico do sensor do alvo direita D+1
+#define sensor_alvo_MAX_DISTANCE 30    // Valor de máximo de distância que o você define para o sensor medir, acima dessa distância o sensor retorna o valor zero
+
+NewPing valor_sensor_alvo_E1(sensor_alvo_E1_TRIGGER_PIN, sensor_alvo_E1_ECHO_PIN, sensor_alvo_MAX_DISTANCE);  // Leitura do sensor ultrasônico do alvo equerdo E-1
+NewPing valor_sensor_alvo_E2(sensor_alvo_E2_TRIGGER_PIN, sensor_alvo_E2_ECHO_PIN, sensor_alvo_MAX_DISTANCE);  // Leitura do sensor ultrasônico do alvo equerdo E 0
+NewPing valor_sensor_alvo_E3(sensor_alvo_E3_TRIGGER_PIN, sensor_alvo_E3_ECHO_PIN, sensor_alvo_MAX_DISTANCE);  // Leitura do sensor ultrasônico do alvo equerdo E+1
+NewPing valor_sensor_alvo_D1(sensor_alvo_D1_TRIGGER_PIN, sensor_alvo_D1_ECHO_PIN, sensor_alvo_MAX_DISTANCE);  // Leitura do sensor ultrasônico do alvo direito D-1
+NewPing valor_sensor_alvo_D2(sensor_alvo_D2_TRIGGER_PIN, sensor_alvo_D2_ECHO_PIN, sensor_alvo_MAX_DISTANCE);  // Leitura do sensor ultrasônico do alvo direito D 0
+NewPing valor_sensor_alvo_D3(sensor_alvo_D3_TRIGGER_PIN, sensor_alvo_D3_ECHO_PIN, sensor_alvo_MAX_DISTANCE);  // Leitura do sensor ultrasônico do alvo direito D+1
+
+// ===============================================================================
+// --- Declaração de Objetos ---
+
+// display Nextion
+//page id:0, id componente:1, nome do componente: "bt0"
+//// Configurações do Nextion na versão "Plataforma_Treino_MEGA_Nextion_T035-V03.HMI"
+
+// page 0 - Tela de alpicação do teste
+
+NexText txt_num_teste = NexText(0, 3, "txt_num_teste");  // Caixa de texto do número do teste realizado
+NexDSButton btn_start = NexDSButton(0, 27, "btn_start");  //botão de duplo estado para controlar
+
+NexText txt_modo = NexText(0, 5, "txt_modo");                   // Caixa de texto do modo selecionado no Nextion
+NexText txt_nivel = NexText(0, 14, "txt_nivel");                // Caixa de texto do nível de dificuldade selecionado no Nextion
+NexVariable modo_valor = NexVariable(0, 17, "modo_valor");      //(objeto do nextion) variavel que guarda o valor do modo
+NexVariable modo_nivel = NexVariable(0, 18, "modo_nivel");      //(objeto do nextion) variavel que guarda o valor do nível
+NexText txt_cartao_SD = NexText(0, 19, "txt_cartao_SD");        // Caixa de texto do sensor da bola
+NexButton btn_back_page1 = NexButton(0, 16, "btn_back_page1");  // passa para página 1 no Nextion
+NexButton btn_next_page3 = NexButton(0, 15, "btn_next_page3");  // passa para página 1 no Nextion
+NexVariable Current_Page = NexVariable(0, 20, "Current_Page");  //(objeto do nextion) variavel que guarda o valor do nível
+NexText txt_iniciais_0 = NexText(0, 21, "txt_iniciais_0");      // Caixa de texto do sensor da bola
+NexText txt_data_0 = NexText(0, 22, "txt_data_0");              // Caixa de texto do sensor da bola
+NexText txt_posicao_0 = NexText(0, 23, "txt_posicao_0");        // Caixa de texto do sensor da bola
+NexText txt_idade_0 = NexText(0, 24, "txt_idade_0");            // Caixa de texto do sensor da bola
+NexText txt_catego_0 = NexText(0, 25, "txt_catego_0");          // Caixa de texto do sensor da bola
+
+// page 1 - Teste de Sensores
+NexText txt_alvo_E1 = NexText(1, 7, "txt_alvo_E1");             // Caixa de texto do sensor alvo E-1
+NexText txt_alvo_E2 = NexText(1, 9, "txt_alvo_E2");             // Caixa de texto do sensor alvo E-1
+NexText txt_alvo_E3 = NexText(1, 10, "txt_alvo_E3");            // Caixa de texto do sensor alvo E-1
+NexText txt_alvo_D1 = NexText(1, 11, "txt_alvo_D1");            // Caixa de texto do sensor alvo E-1
+NexText txt_alvo_D2 = NexText(1, 12, "txt_alvo_D2");            // Caixa de texto do sensor alvo E-1
+NexText txt_alvo_D3 = NexText(1, 13, "txt_alvo_D3");            // Caixa de texto do sensor alvo E-1
+NexText txt_bola = NexText(1, 8, "txt_bola");                   // Caixa de texto do sensor alvo E-1
+NexButton btn_next_page0 = NexButton(1, 4, "btn_next_page0");   // passa para página 1 no Nextion
+NexButton btn_back_page2 = NexButton(1, 14, "btn_back_page2");  // passa para página 1 no Nextion
+
+// page 2 - Cadastro de Jogador
+NexButton btn_next_page1 = NexButton(2, 8, "btn_next_page1");  // passa para página 1 no Nextion
+NexButton btn_back_page0 = NexButton(2, 9, "btn_back_page0");  // passa para página 1 no Nextion
+NexText txt_iniciais = NexText(2, 6, "txt_iniciais");          // Caixa de texto do nível de dificuldade selecionado no Nextion
+NexText txt_data = NexText(2, 14, "txt_data");                 // Caixa de texto do nível de dificuldade selecionado no Nextion
+NexText txt_posicao = NexText(2, 9, "txt_posicao");            // Caixa de texto do nível de dificuldade selecionado no Nextion
+NexText txt_idade = NexText(2, 12, "txt_idade");               // Caixa de texto do nível de dificuldade selecionado no Nextion
+NexText txt_categoria = NexText(2, 4, "txt_categoria");        // Caixa de texto do nível de dificuldade selecionado no Nextion
+
+// page 3 - resultado dos testes
+NexText txt_n_tst_res = NexText(3, 3, "txt_n_tst_res");        // Caixa de texto do número do teste realizado
+NexText txt_modo_res = NexText(3, 5, "txt_modo_res");          // Caixa de texto do modo selecionado no Nextion
+NexText txt_nivel_res = NexText(3, 7, "txt_nivel_res");        // Caixa de texto do nível de dificuldade selecionado no Nextion
+NexText txt_alvo_sorte = NexText(3, 13, "txt_alvo_sorte");     // Caixa de texto do alvo sorteado
+NexText txt_alvo_acert = NexText(3, 14, "txt_alvo_acert");     // Caixa de texto do alvo acertado
+NexText txt_tempo_chut = NexText(3, 15, "txt_tempo_chut");     // Caixa numérica do tempo de chute
+NexText txt_veloc_chut = NexText(3, 16, "txt_veloc_chut");     // Caixa numérica da velocidade de chute
+NexButton bt_back3_page0 = NexButton(3, 8, "bt_back3_page0");  // passa para página 1 no Nextion
+
+// Declaração de páginas no Nestion
+NexPage page0 = NexPage(0, 0, "page0");
+NexPage page1 = NexPage(1, 0, "page1");
+NexPage page2 = NexPage(2, 0, "page2");
+NexPage page3 = NexPage(3, 0, "page3");
+
+// ===============================================================================
+// --- Declaração de funções ---
+
+void loop();
+void setup();
+void funcao_btn_start_PopCallback();
+void funcao_btn_back_page1_PopCallback();
+void funcao_btn_next_page3_PopCallback();
+void funcao_btn_next_page0_PopCallback();
+void funcao_btn_back_page2_PopCallback();
+void funcao_btn_next_page1_PopCallback();
+void funcao_bt_back3_page0_PopCallback();
+void funcao_btn_cartao_SD_PopCallback();
+void funcao_teste_sensores();
+void funcao_cadastro_jogador();
+
+void nivel_teste();
+void funcao_lado(int numero);
+void desliga_barra_led();
+void funcao_sensor_alvo();
+void funcao_calculo_registro();  // função de cálculo de tempo e registro dos valores
+void funcao_contagem_teste();    // função para contagem e mostra do número de testes realizado
+
+// ===============================================================================
+// --- Declaração de Objetos Nextion que terão interação de eventos touch ---
+
+NexTouch *nex_listen_list[] = {
+  &btn_start,   // botão de início do teste
+  &modo_valor,  // variável do modo de teste escolhido
+  &modo_nivel,  // variável de nível de dificuldade do teste
+  &Current_Page,
+  &btn_back_page1,
+  &btn_next_page3,
+  &btn_next_page0,
+  &btn_back_page2,
+  &btn_next_page1,
+  &btn_back_page0,
+  &bt_back3_page0,
+  &page0,  // Page added as a touch event
+  &page1,  // Page added as a touch event
+  &page2,  // Page added as a touch event
+  &page3,  // Page added as a touch event
+  NULL
+};
+
+// ===============================================================================
+// --- Definições do cartão SD ---
+
+const int chipSelect = 53;      // Constante que indica em qual pino está conectado o Chip Select do módulo de comunicação
+File myFile;                    // Objeto responsável por escrever/Ler do cartão SD
+bool cartaoOk = true;           // variável de controle do cartão SD
+String leitura = "";            // Variavel contendo string que será armazenada em arquivo CSV
+String stg_modo = "";           // variavel contendo string do modo de seleção
+String stg_nivel = "";          // variavel contendo string do nivel de dificuldade
+String stg_alvo_acertado = "";  // variavel contendo string do alvo acertado
+String stg_alvo_sorteado = "";
+String stg_iniciais = "";
+String stg_data = "";
+String stg_posicao = "";
+String stg_idade = "";
+String stg_categoria = "";
+unsigned long cont = 1;        // variavel de contagem de testes
+char buffer_cont[15] = { 0 };  // variavel do nível de dificuldade de teste
+uint32_t len = 10;
+String string_iniciais = "";
+
+// ================================================================================
+// --- Variáveis Globais ---
+
+char selecao_nivel[15] = { 0 };            // variavel do nível de dificuldade de teste
+char selecao_modo[15] = { 0 };             // variavel do modo de teste
+char buffer_nivel[15] = { 0 };             // Variavel de texto para conversão do nível do teste, armazenamento e exibição
+char buffer_modo[15] = { 0 };              // Variavel de texto para conversão do modo de execuçãodo teste, armazenamento e exibição
+char buffer_tempo_chute[15] = { 0 };       // Variavel de texto para conversão do cáulculo do tempo de reação (chute), armazenamento e exibição
+char buffer_velocidade_chute[15] = { 0 };  // Variavel de texto para conversão do cáulculo da velocidade de chute, armazenamento e exibição
+char buffer_iniciais[20] = { 0 };          // Variavel de texto para conversão do nível do teste, armazenamento e exibição
+char buffer_data[20] = { 0 };              // Variavel de texto para conversão do nível do teste, armazenamento e exibição
+char buffer_posicao[20] = { 0 };           // Variavel de texto para conversão do nível do teste, armazenamento e exibição
+char buffer_idade[20] = { 0 };             // Variavel de texto para conversão do nível do teste, armazenamento e exibição
+char buffer_categoria[20] = { 0 };         // Variavel de texto para conversão do nível do teste, armazenamento e exibição
+bool is_page0 = true;                      //variável de controle para saber se é a página 0 que está em tela
+bool is_page1 = true;                      //variável de controle para saber se é a página 1 que está em tela
+bool is_page2 = true;                      //variável de controle para saber se é a página 2 que está em tela
+bool is_page3 = true;                      //variável de controle para saber se é a página 3 que está em tela
+uint32_t Page = 0;                         // Create a variable to store which page is currently loaded
+uint32_t modo = 0;
+uint32_t modo_dificuldade = 0;
+uint32_t dual_state;       // varialvel para controle do botão dualstate
+int nP = 0;                // número inicial da porta arduino mega para a barra de led, cresce de 2
+int nP_ML = 26;            // número inicial da porta arduino mega para a barra de led, cresce de 1
+int nP_MLD = 26;           // número inicial da porta arduino mega para a barra de led, cresce de 1
+float distancia_alvo;  // dist alvo
+float distancia_alvo_1 = 5.15;  // dist alvo
+float distancia_alvo_2 = 5.25;  // dist alvo
+float distancia_alvo_3 = 5.44;  // dist alvo
+int nivel_dificuldade = 36;
+unsigned long tempo_chute_0 = 0;       // tempo no momento do chute
+unsigned long tempo_alvo_0 = 0;        // tempo no momento do alvo
+unsigned long tempo_led_10 = 0;        // tempo do led 10
+unsigned long tempo_led_0 = 0;
+unsigned long tempo_led = 0;
+long tempo = 0;
+long tempo_chute = 0;          // tempo do chute-bola     long tempo_chute = 0; 
+unsigned long tempo_alvo = 0;  // tempo da bola-alvo
+long tempo_reacao = 0;         // tempo da bola-alvo 01   long tempo_reacao = 0;  
+int numero;                    // variavel de sorteio do alvo esquedar ou direita
+float velocidade_chute = 0;           //
+unsigned long delay_01 = 0;           // auxiliar para incremento do tempo de delay
+unsigned long tempo_delay = 1000;     // tempo de delay para o acendimento de cada led, será o padrão para modo 01: tempo cosntante
+unsigned long delta_tempo = 50;      // incremento do delta delay do modo crescente e decrescente
+unsigned long delta_tempo_rando = 0;  // incremento do delta delay do modo randômico
+unsigned long rando_min = -300;       // valor mínimo para do delta delay do modo randômico
+unsigned long rando_max = 300;        // valor máximo para do delta delay do modo randômico
+unsigned long t;                      // variavel para transformação de millis para minutos, segundos e centésimos
+// --- Variáveis de estado atual e anterior ados botoes ---
+bool  estado_botao_chute = false;
+bool estado_alvo = false;
+bool estado_cartao_SD = true;
+bool estado_BT = true;  // resetar o bluetooth
+bool erro_alvo = false;
+bool estado_desliga_barra_led = false;
+bool estado_registro = false;
+bool estado_alvo_0 = true;
+volatile bool estado_Interrupt = false;             // Variável para indicar se ocorreu uma interrupção
+bool counting = false;  // Indica se a contagem está em andamento
+bool counting_chute = true; // Indica se a contagem está em andamento
+volatile bool counting_alvo = false; // Indica se a contagem está em andamento
+bool counting_led_0 = false;   // Indica se a contagem está em andamento
+// --- estado bolleano dos modos de acendimento ---
+bool modo_01 = false;     // constante
+bool modo_02 = false;     // crescente
+bool modo_03 = false;     // decrescente
+bool modo_04 = false;     // randômico
+bool modo_chute = false;  // sensor de chute
+
+// ===============================================================================
+//                --- Configurações Iniciais ---
+void setup() {
+ // --- Configurações do Nextion ---
+
+  nexInit();  // inicializa a comunicação com o nextion e aponta as fuções que serão chamadas
+
+  btn_start.attachPop(funcao_btn_start_PopCallback, &btn_start);                 //callback para o evento de release do slider
+  btn_back_page1.attachPop(funcao_btn_back_page1_PopCallback, &btn_back_page1);  //callback para o evento de release do slider
+  btn_next_page3.attachPop(funcao_btn_next_page3_PopCallback, &btn_next_page3);  //callback para o evento de release do slider
+  btn_next_page0.attachPop(funcao_btn_next_page0_PopCallback, &btn_next_page0);  //callback para o evento de release do slider
+  btn_back_page2.attachPop(funcao_btn_back_page2_PopCallback, &btn_back_page2);  //callback para o evento de release do slider
+  btn_next_page1.attachPop(funcao_btn_next_page1_PopCallback, &btn_next_page0);  //callback para o evento de release do slider
+  bt_back3_page0.attachPop(funcao_bt_back3_page0_PopCallback, &bt_back3_page0);  //callback para o evento de release do slider
+  is_page0 = true;
+  // ===============================================================================
+  // --- Configurações das portas I/O ---
+
+  pinMode(botao_chute, INPUT_PULLUP);  // define como botão de impulso levantado
+  pinMode(botao_alvo, INPUT_PULLUP);   // saida alvos
+  pinMode(led_alvo_equerdo, OUTPUT);   // Pino de entrada digital indicador do alvo lado esquerdo
+  pinMode(alvo_E1, INPUT_PULLUP);      // Pino de entrada digital indicador do alvo lado esquerdo E-1  **********************8
+  pinMode(alvo_E2, INPUT_PULLUP);      // Pino de entrada digital indicador do alvo lado equerda E 0
+  pinMode(alvo_E3, INPUT_PULLUP);      // Pino de entrada digital indicador do alvo lado equerda E+1
+  pinMode(led_alvo_direito, OUTPUT);   // Pino de entrada de entrada digital indicador do alvo lado direito
+  pinMode(alvo_D1, INPUT_PULLUP);      // Pino de entrada digital indicador do alvo lado direito D-1
+  pinMode(alvo_D2, INPUT_PULLUP);      // Pino de entrada digital indicador do alvo lado direito D 0
+  pinMode(alvo_D3, INPUT_PULLUP);      // Pino de entrada digital indicador do alvo lado direito D+1
+  pinMode(matriz_led_01, OUTPUT);      // saída pra barra de led
+  pinMode(matriz_led_02, OUTPUT);      // saída pra barra de led
+  pinMode(matriz_led_03, OUTPUT);      // saída pra barra de led
+  pinMode(matriz_led_04, OUTPUT);      // saída pra barra de led
+  pinMode(matriz_led_05, OUTPUT);      // saída pra barra de led
+  pinMode(matriz_led_06, OUTPUT);      // saída pra barra de led
+  pinMode(matriz_led_07, OUTPUT);      // saída pra barra de led
+  pinMode(matriz_led_08, OUTPUT);      // saída pra barra de led
+  pinMode(matriz_led_09, OUTPUT);      // saída pra barra de led
+  pinMode(matriz_led_10, OUTPUT);      // saída pra barra de led
+ 
+  //////////////////////////////////////////////////
+  digitalWrite(matriz_led_01, HIGH);     // saída pra barra de led
+  digitalWrite(matriz_led_02, HIGH);     // saída pra barra de led
+  digitalWrite(matriz_led_03, HIGH);     // saída pra barra de led
+  digitalWrite(matriz_led_04, HIGH);     // saída pra barra de led
+  digitalWrite(matriz_led_05, HIGH);     // saída pra barra de led
+  digitalWrite(matriz_led_06, HIGH);     // saída pra barra de led
+  digitalWrite(matriz_led_07, HIGH);     // saída pra barra de led
+  digitalWrite(matriz_led_08, HIGH);     // saída pra barra de led
+  digitalWrite(matriz_led_09, HIGH);     // saída pra barra de led
+  digitalWrite(matriz_led_10, HIGH);     // saída pra barra de led
+  digitalWrite(led_alvo_equerdo, HIGH);  // desliga o alvo
+  digitalWrite(led_alvo_direito, HIGH);  // desliga o alvo
+  digitalWrite(alvo_E1, HIGH);           // Setar o Pino de entrada digital do alvo equerdo E-1 em nível alto
+  digitalWrite(alvo_E2, HIGH);           // Setar o Pino de entrada digital do alvo equerdo E-1 em nível alto
+  digitalWrite(alvo_E3, HIGH);           // Setar o Pino de entrada digital do alvo equerdo E-1 em nível alto
+  digitalWrite(alvo_D1, HIGH);           // Setar o Pino de entrada digital do alvo direito D-1 em nível alto
+  digitalWrite(alvo_D2, HIGH);           // Setar o Pino de entrada digital do alvo direito D 0 em nível alto
+  digitalWrite(alvo_D3, HIGH);           // Setar o Pino de entrada digital do alvo direito D+1 em nível alto
+  
+  // ===============================================================================
+  // --- Comuniação bluetooth ---
+
+  Serial.begin(115200);  // Inicialização da porta de comunicação Serial 0
+  nexSerial.begin(115200); // Inicialização da porta de comunicação Serial 2 Nextion
+  randomSeed(analogRead(A0));  // reinicia o padrão randômico
+  desliga_barra_led();
+  modo = 0;
+  modo_dificuldade = 0;
+  memset(buffer_cont, 0, sizeof(buffer_cont));  // Clear the buffer, so we can start using it
+  itoa(cont, buffer_cont, 10);                  // Converter a variavel temp chute de inteiro para o seu equivalente ASCII
+  txt_num_teste.setText(buffer_cont);           // mostra no Nextion a velocidade do chute
+
+  /// Verificação do cartão SD
+  if (!SD.begin(chipSelect)) {         // Se não for possível se comunicar com o cartão SD o código não deve prosseguir
+    txt_cartao_SD.setText("SD Erro");  // mostra no Nextion o modo selecionado
+    txt_cartao_SD.Set_background_color_bco(63488);
+    delay(10);  // aguarda 3 segundos
+    cartaoOk = false;
+    return;
+  }
+  if (cartaoOk) {                    // Caso o cartão esteja ok é criado um arquivo no cartão SD com o nome datalog.csv em modo de escrita
+    txt_cartao_SD.setText("SD OK");  // mostra no Nextion o modo selecionado
+    txt_cartao_SD.Set_background_color_bco(1024);
+    delay(10);                                    // aguarda 3 segundos
+    myFile = SD.open("futdata.csv", FILE_WRITE);  // Abertura de arquivo "datalog.csv" para gravação
+    String cabecalho = "Numero Teste" ";" " Data" ";" " Iniciais do Jogador" ";" " Poisicao" ";" " Idade" ";" " Categoria"  ";"  "Modo" ";" "Nivel" ";" "Alvo Sorteado" ";" "Alvo Acertado"";" "Tempo LED 0" ";" "Tempo LED 10" ";" "Tempo LED TOTAL" ";" "Tempo Chute 0" ";" "tempo Alvo 0"  ";" "Tempo de Reacao" ";" "Tempo Chute-Alvo" ";" " Velocidade do Chute"; 
+    myFile.println(cabecalho);
+    myFile.close();  // Fechamos o arquivo
+    cartaoOk = true;
+  }
+
+  /// Interrupções
+  attachInterrupt(digitalPinToInterrupt(botao_chute),funcao_botao_chute, FALLING);
+  
+}  //end setup
+
+// ===============================================================================
+// --- Loop Infinito ---
+void loop() {
+  nexLoop(nex_listen_list);  //essa função trabalha como um listener para os eventos de press e release dos objetos utilizados no NEXTION
+  Current_Page.getValue(&Page);  //pega o valor atual da variável nextion
+
+  if (Page == 0) {
+    is_page0 = true;
+  }
+  if (Page == 1) {
+    is_page1 = true;
+  }
+  if (Page == 2) {
+    is_page2 = true;
+  }
+
+  if (is_page0 == true) {
+    modo = 0;              ////////////////////////          desativei
+    modo_dificuldade = 0;  ///////////////////////          desativei
+    /////// Verificar se o cartão SD está pronto pra gravar
+    if (!SD.begin(chipSelect)) {         // Se não for possível se comunicar com o cartão SD o código não deve prosseguir
+      txt_cartao_SD.setText("SD Erro");  // mostra no Nextion o modo selecionado
+      txt_cartao_SD.Set_background_color_bco(63488);
+      delay(10);  // aguarda 3 segundos
+      cartaoOk = false;
+      funcao_btn_cartao_SD_PopCallback();
+      return;
+    }
+    btn_start.getValue(&dual_state);
+    
+    if (dual_state && digitalRead(botao_chute) == HIGH) {
+      digitalWrite(alvo_E1, HIGH);           // Setar o Pino de entrada digital do alvo equerdo E-1 em nível alto
+      digitalWrite(alvo_E2, HIGH);           // Setar o Pino de entrada digital do alvo equerdo E-1 em nível alto
+      digitalWrite(alvo_E3, HIGH);           // Setar o Pino de entrada digital do alvo equerdo E-1 em nível alto
+      digitalWrite(alvo_D1, HIGH);           // Setar o Pino de entrada digital do alvo direito D-1 em nível alto
+      digitalWrite(alvo_D2, HIGH);           // Setar o Pino de entrada digital do alvo direito D 0 em nível alto
+      digitalWrite(alvo_D3, HIGH);           // Setar o Pino de entrada digital do alvo direito D+1 em nível alto
+      digitalWrite(led_alvo_equerdo, HIGH);  // desliga o alvo
+      digitalWrite(led_alvo_direito, HIGH);  // desliga o alvo
+      nP = 0;      // reinicia a contagem de portas de saída
+      nP_ML = 26;  // reinicia a contagem de portas de saída da matriz de Led
+      funcao_btn_start_PopCallback();
+    }
+  }
+
+  if (Page == 1) {
+    funcao_teste_sensores();
+  }
+  if (Page == 2) {
+    funcao_cadastro_jogador();
+  }
+  if (Page == 3) {
+  }
+}  // End Loop
+// ===============================================================================
+// --- Fução de iniciar o treino ---
+
+void funcao_btn_start_PopCallback() {                    // interrupcao para iniciar o teste
+  if (is_page0) {                                        //&& valorLDR_BT == '0')    /// acrescentar validação com o valorLDR_BT == '0'
+    memset(buffer_modo, 0, sizeof(buffer_modo));         // Clear the buffer, so we can start using it
+    txt_modo.getText(buffer_modo, sizeof(buffer_modo));  // Read the text on the object t5 and store it on the buffer
+    modo_valor.getValue(&modo);                          //pega o valor atual da variável nextion
+    memset(buffer_nivel, 0, sizeof(buffer_nivel));          // Clear the buffer, so we can start using it
+    txt_nivel.getText(buffer_nivel, sizeof(buffer_nivel));  // Read the text on the object t5 and store it on the buffer
+    modo_nivel.getValue(&modo_dificuldade);                 //pega o valor atual da variável nextion
+    Serial.print("Numero do Teste: ");
+    Serial.println(cont);
+
+    //////// Verificação do cartão SD //////////////////
+    if (!SD.begin(chipSelect)) {         // Se não for possível se comunicar com o cartão SD o código não deve prosseguir
+      txt_cartao_SD.setText("SD Erro");  // mostra no Nextion o modo selecionado
+      txt_cartao_SD.Set_background_color_bco(63488);
+      delay(10);  // aguarda 3 segundos
+      cartaoOk = false;
+      return;
+    }
+    if (cartaoOk) {                    // Caso o cartão esteja ok é criado um arquivo no cartão SD com o nome datalog.csv em modo de escrita
+      txt_cartao_SD.setText("SD OK");  // mostra no Nextion o modo selecionado
+      txt_cartao_SD.Set_background_color_bco(1024);
+      delay(10);  // aguarda 3 segundos
+      cartaoOk = true;
+    }
+    ///////////////////////////////////////////////////
+    if (modo_dificuldade == 1) {   // Verificação do nível de dificuldade para definição do tempo de acendimento do alvo sorteado
+      nivel_dificuldade = 5;
+    }
+    if (modo_dificuldade == 2) {   // Verificação do nível de dificuldade para definição do tempo de acendimento do alvo sorteado
+      nivel_dificuldade = 7;
+    }
+    if (modo_dificuldade == 3) {   // Verificação do nível de dificuldade para definição do tempo de acendimento do alvo sorteado
+      nivel_dificuldade = 9;
+    }
+    ////////////////////////////////////////////////////
+    while (modo == 1 && modo_dificuldade != 0 && cartaoOk == true) {  // modo 01 = constante
+      funcao_contagem_teste();       /// Conversão da contagem de teste
+      ////////////////////// Contador de Tempo ////////////////////////////////////
+      if ((millis() - delay_01) >= tempo_delay && nP <= 10) {
+        digitalWrite(nP_ML, LOW);  // liga as portas da barra de led 26 a 35
+        if (nP == 0) {
+          tempo_led_0 = millis();
+        }
+        nP_ML = nP_ML + 1;         // incrementa a porta da barra de led
+        nP = nP + 1;               // incrementa a porta da barra de led
+        delay_01 = millis();       // atualiza o inicio do delay_01    
+        /////////////////////////////////////////////////////////////////////////
+        //////////// Desligar a barra de LED a partir da terceira  ///////////////
+        nP_MLD = nP_MLD + 1;  // incrementa a porta da barra de led para desligar
+        if (nP_ML == 28) {
+          nP_MLD = 26;
+        }
+        digitalWrite(nP_MLD, HIGH);
+        if (nP_ML > 35) {
+          digitalWrite(matriz_led_10, LOW);
+        }
+        /////////////// Final Desligar Painel de LED ///////////////////////////////////////////////
+        if (nP == nivel_dificuldade) {  // acendimento do 8º led
+          numero = random(6, 8);        // sorteio do alvo
+          if (numero == 6) {
+            digitalWrite(led_alvo_equerdo, LOW);  // Setar o Pino de saída digital do alvo equerdo em nível alto
+          }
+          if (numero == 7) {
+            digitalWrite(led_alvo_direito, LOW);  // Setar o Pino de saída digital do alvo direito em nível alto
+          }
+          funcao_lado(numero);  // função printar o alvo
+        }
+        if (nP <= 10) {
+          tempo_led_10 = millis();
+        }
+        tempo = millis();  
+      }
+      ////////////////////////////////// SENSOR ALVO ///////////////////////////////////////////
+      if (estado_alvo) {
+        unsigned long delayEstado = millis();
+        if ((valor_sensor_alvo_E1.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_3;
+          digitalWrite(alvo_E1, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "E-1";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if ((valor_sensor_alvo_E2.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_2;
+          digitalWrite(alvo_E2, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "E 0";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if ((valor_sensor_alvo_E3.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_1;
+          digitalWrite(alvo_E3, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "E+1";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if ((valor_sensor_alvo_D1.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_1;
+          digitalWrite(alvo_D1, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "D-1";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if ((valor_sensor_alvo_D2.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_2;
+          digitalWrite(alvo_D2, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "D 0";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if ((valor_sensor_alvo_D3.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_3;
+          digitalWrite(alvo_D3, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "D+1";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if (millis() - tempo_chute_0 >= 4000 && estado_botao_chute == true) { // espera acertar o alvo por 4 segundos, botão levantado
+          erro_alvo = true;
+        }
+        if (erro_alvo) { // && ((millis() - tempo_led_10) <= 5000))
+          Serial.print(" Alvo Acertado: Errou o Alvo;");  // envia errou o alvo após 5 segundos de espera
+          stg_alvo_acertado = "Errou o Alvo";
+          tempo_alvo_0 = tempo_chute_0;
+          digitalWrite(numero, LOW);  // desliga o alvo
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }      
+      }///////////////////////////////////////////////////////////////////////////////////////////////////////
+      funcao_calculo_registro();
+      
+    }
+
+    while (modo == 2 && modo_dificuldade != 0 && cartaoOk == true) {  // modo 02 = crescente
+      funcao_contagem_teste();       /// Conversão da contagem de teste
+      ////////////////////// Contador de Tempo ////////////////////////////////////
+      if ((millis() - delay_01) >= tempo_delay && nP <= 10) {
+        digitalWrite(nP_ML, LOW);  // liga as portas da barra de led 26 a 35
+        if (nP == 0) {
+          tempo_led_0 = millis();
+        }
+        nP_ML = nP_ML + 1;         // incrementa a porta da barra de led
+        nP = nP + 1;               // incrementa a porta da barra de led
+        delay_01 = millis();       // atualiza o inicio do delay_01  
+        tempo_delay = tempo_delay - delta_tempo;    // decrementa um difeirencial de tempo (delta_tempo), diminuindo o tempo de delay para o proximo acendimento
+        if (tempo_delay < 500)                            // limita o tempo delay máximo em 1500 ms 
+        {
+          tempo_delay = 500;
+        }     
+        /////////////////////////////////////////////////////////////////////////
+        //////////// Desligar a barra de LED a partir da terceira  ///////////////
+        nP_MLD = nP_MLD + 1;  // incrementa a porta da barra de led para desligar
+        if (nP_ML == 28) {
+          nP_MLD = 26;
+        }
+        digitalWrite(nP_MLD, HIGH);
+        if (nP_ML > 35) {
+          digitalWrite(matriz_led_10, LOW);
+        }
+        /////////////// Final Desligar Painel de LED ///////////////////////////////////////////////
+        if (nP == nivel_dificuldade) {  // acendimento do 8º led
+          numero = random(6, 8);        // sorteio do alvo
+          if (numero == 6) {
+            digitalWrite(led_alvo_equerdo, LOW);  // Setar o Pino de saída digital do alvo equerdo em nível alto
+          }
+          if (numero == 7) {
+            digitalWrite(led_alvo_direito, LOW);  // Setar o Pino de saída digital do alvo direito em nível alto
+          }
+          funcao_lado(numero);  // função printar o alvo
+        }
+        if (nP <= 10) {
+          tempo_led_10 = millis();
+        }
+        tempo = millis();  
+      }
+      ////////////////////////////////// SENSOR ALVO ///////////////////////////////////////////
+      if (estado_alvo) {
+        unsigned long delayEstado = millis();
+        if ((valor_sensor_alvo_E1.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_3;
+          digitalWrite(alvo_E1, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "E-1";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if ((valor_sensor_alvo_E2.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_2;
+          digitalWrite(alvo_E2, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "E 0";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if ((valor_sensor_alvo_E3.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_1;
+          digitalWrite(alvo_E3, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "E+1";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if ((valor_sensor_alvo_D1.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_1;
+          digitalWrite(alvo_D1, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "D-1";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if ((valor_sensor_alvo_D2.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_2;
+          digitalWrite(alvo_D2, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "D 0";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if ((valor_sensor_alvo_D3.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_3;
+          digitalWrite(alvo_D3, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "D+1";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if (millis() - tempo_chute_0 >= 4000 && estado_botao_chute == true) { // espera acertar o alvo por 4 segundos, botão levantado
+          erro_alvo = true;
+        }
+        if (erro_alvo) { // && ((millis() - tempo_led_10) <= 5000))
+          Serial.print(" Alvo Acertado: Errou o Alvo;");  // envia errou o alvo após 5 segundos de espera
+          stg_alvo_acertado = "Errou o Alvo";
+          tempo_alvo_0 = tempo_chute_0;
+          digitalWrite(numero, LOW);  // desliga o alvo
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }     
+      }///////////////////////////////////////////////////////////////////////////////////////////////////////
+      funcao_calculo_registro();
+    }
+
+    while (modo == 3 && modo_dificuldade != 0 && cartaoOk == true) {  // modo 03 = decrescente
+      funcao_contagem_teste();       /// Conversão da contagem de teste
+      ////////////////////// Contador de Tempo ////////////////////////////////////
+      if ((millis() - delay_01) >= tempo_delay && nP <= 10) {
+        digitalWrite(nP_ML, LOW);  // liga as portas da barra de led 26 a 35
+        if (nP == 0) {
+          tempo_led_0 = millis();
+        }
+        nP_ML = nP_ML + 1;         // incrementa a porta da barra de led
+        nP = nP + 1;               // incrementa a porta da barra de led
+        delay_01 = millis();       // atualiza o inicio do delay_01  
+        tempo_delay = tempo_delay + delta_tempo;    // decrementa um difeirencial de tempo (delta_tempo), diminuindo o tempo de delay para o proximo acendimento
+        if (tempo_delay > 2000)                            // limita o tempo delay máximo em 1500 ms 
+        {
+          tempo_delay = 2000;
+        }     
+        /////////////////////////////////////////////////////////////////////////
+        //////////// Desligar a barra de LED a partir da terceira  ///////////////
+        nP_MLD = nP_MLD + 1;  // incrementa a porta da barra de led para desligar
+        if (nP_ML == 28) {
+          nP_MLD = 26;
+        }
+        digitalWrite(nP_MLD, HIGH);
+        if (nP_ML > 35) {
+          digitalWrite(matriz_led_10, LOW);
+        }
+        /////////////// Final Desligar Painel de LED ///////////////////////////////////////////////
+        if (nP == nivel_dificuldade) {  // acendimento do 8º led
+          numero = random(6, 8);        // sorteio do alvo
+          if (numero == 6) {
+            digitalWrite(led_alvo_equerdo, LOW);  // Setar o Pino de saída digital do alvo equerdo em nível alto
+          }
+          if (numero == 7) {
+            digitalWrite(led_alvo_direito, LOW);  // Setar o Pino de saída digital do alvo direito em nível alto
+          }
+          funcao_lado(numero);  // função printar o alvo
+        }
+        if (nP <= 10) {
+          tempo_led_10 = millis();
+        }
+        tempo = millis();  
+      }
+      ////////////////////////////////// SENSOR ALVO ///////////////////////////////////////////
+      if (estado_alvo) {
+        unsigned long delayEstado = millis();
+        if ((valor_sensor_alvo_E1.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_3;
+          digitalWrite(alvo_E1, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "E-1";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if ((valor_sensor_alvo_E2.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_2;
+          digitalWrite(alvo_E2, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "E 0";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if ((valor_sensor_alvo_E3.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_1;
+          digitalWrite(alvo_E3, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "E+1";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if ((valor_sensor_alvo_D1.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_1;
+          digitalWrite(alvo_D1, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "D-1";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if ((valor_sensor_alvo_D2.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_2;
+          digitalWrite(alvo_D2, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "D 0";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if ((valor_sensor_alvo_D3.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_3;
+          digitalWrite(alvo_D3, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "D+1";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if (millis() - tempo_chute_0 >= 4000 && estado_botao_chute == true) { // espera acertar o alvo por 4 segundos, botão levantado
+          erro_alvo = true;
+        }
+        if (erro_alvo) { // && ((millis() - tempo_led_10) <= 5000))
+          Serial.print(" Alvo Acertado: Errou o Alvo;");  // envia errou o alvo após 5 segundos de espera
+          stg_alvo_acertado = "Errou o Alvo";
+          tempo_alvo_0 = tempo_chute_0;
+          digitalWrite(numero, LOW);  // desliga o alvo
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }     
+      }///////////////////////////////////////////////////////////////////////////////////////////////////////
+      funcao_calculo_registro();
+      
+    }
+
+    while (modo == 4 && modo_dificuldade != 0 && cartaoOk == true) { // modo 04 = randômico
+      funcao_contagem_teste();       /// Conversão da contagem de teste
+      ////////////////////// Contador de Tempo ////////////////////////////////////
+      if ((millis() - delay_01) >= tempo_delay && nP <= 10) {
+        digitalWrite(nP_ML, LOW);  // liga as portas da barra de led 26 a 35
+        if (nP == 0) {
+          tempo_led_0 = millis();
+        }
+        nP_ML = nP_ML + 1;         // incrementa a porta da barra de led
+        nP = nP + 1;               // incrementa a porta da barra de led
+        delay_01 = millis();       // atualiza o inicio do delay_01  
+        delta_tempo_rando = random(rando_min,rando_max);   // gera um valor de incremento randômico para cada iteração, podendo aumentar ou diminuir a velocidade de acendimento
+        tempo_delay = tempo_delay + delta_tempo_rando;     // incrementa um diferencial de tempo (delta_tempo) ao tempo de delay 
+        if (tempo_delay < 600 )
+        {
+          tempo_delay = 600;                               // limita o tempo delay mínimo em 100 ms 
+        }
+        if (tempo_delay > 1400)                            // limita o tempo delay máximo em 1500 ms 
+        {
+          tempo_delay = 1400;
+        }    
+        /////////////////////////////////////////////////////////////////////////
+        //////////// Desligar a barra de LED a partir da terceira  ///////////////
+        nP_MLD = nP_MLD + 1;  // incrementa a porta da barra de led para desligar
+        if (nP_ML == 28) {
+          nP_MLD = 26;
+        }
+        digitalWrite(nP_MLD, HIGH);
+        if (nP_ML > 35) {
+          digitalWrite(matriz_led_10, LOW);
+        }
+        /////////////// Final Desligar Painel de LED ///////////////////////////////////////////////
+        if (nP == nivel_dificuldade) {  // acendimento do 8º led
+          numero = random(6, 8);        // sorteio do alvo
+          if (numero == 6) {
+            digitalWrite(led_alvo_equerdo, LOW);  // Setar o Pino de saída digital do alvo equerdo em nível alto
+          }
+          if (numero == 7) {
+            digitalWrite(led_alvo_direito, LOW);  // Setar o Pino de saída digital do alvo direito em nível alto
+          }
+          funcao_lado(numero);  // função printar o alvo
+        }
+        if (nP <= 10) {
+          tempo_led_10 = millis();
+        }
+        tempo = millis();  
+      }
+      ////////////////////////////////// SENSOR ALVO ///////////////////////////////////////////
+      if (estado_alvo) {
+        unsigned long delayEstado = millis();
+        if ((valor_sensor_alvo_E1.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_3;
+          digitalWrite(alvo_E1, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "E-1";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if ((valor_sensor_alvo_E2.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_2;
+          digitalWrite(alvo_E2, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "E 0";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if ((valor_sensor_alvo_E3.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_1;
+          digitalWrite(alvo_E3, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "E+1";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if ((valor_sensor_alvo_D1.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_1;
+          digitalWrite(alvo_D1, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "D-1";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if ((valor_sensor_alvo_D2.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_2;
+          digitalWrite(alvo_D2, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "D 0";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if ((valor_sensor_alvo_D3.ping_cm()) >= 2) {
+          distancia_alvo = distancia_alvo_3;
+          digitalWrite(alvo_D3, LOW);
+          digitalWrite(numero, LOW);  // desliga o alvo
+          stg_alvo_acertado = "D+1";
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }
+        if (millis() - tempo_chute_0 >= 4000 && estado_botao_chute == true) { // espera acertar o alvo por 4 segundos, botão levantado
+          erro_alvo = true;
+        }
+        if (erro_alvo) { // && ((millis() - tempo_led_10) <= 5000))
+          Serial.print(" Alvo Acertado: Errou o Alvo;");  // envia errou o alvo após 5 segundos de espera
+          stg_alvo_acertado = "Errou o Alvo";
+          tempo_alvo_0 = tempo_chute_0;
+          digitalWrite(numero, LOW);  // desliga o alvo
+          estado_alvo = false;
+          estado_registro = true;
+          tempo_alvo_0 = millis();  // Marca o tempo do alvo
+          digitalWrite (led_alvo_equerdo, HIGH);        // Desligar a barra de led do alvo equerdo
+          digitalWrite (led_alvo_direito, HIGH);        // Desligar a barra de led do alvo direito
+        }     
+      }///////////////////////////////////////////////////////////////////////////////////////////////////////
+      funcao_calculo_registro();
+    
+    }
+  }
+  // return NULL;
+}
+
+void funcao_botao_chute() { // interrupcao para registro do tempo inicial do chute
+  if (counting_chute) { 
+    tempo_chute_0 = millis();  // Marca o tempo inicial do chute
+    counting_chute = false;
+    estado_botao_chute = true;  // chute realizado
+    estado_alvo = true;
+    // digitalWrite(matriz_led_08, HIGH);  // saída pra barra de led
+    digitalWrite(matriz_led_09, HIGH);  // saída pra barra de led
+    digitalWrite(matriz_led_10, HIGH);  // saída pra barra de led
+  }
+}
+
+void funcao_sensor_alvo() {
+
+}
+
+// Verificação do cartão SD
+void funcao_btn_cartao_SD_PopCallback() {
+  if (!SD.begin(chipSelect)) {         // Se não for possível se comunicar com o cartão SD o código não deve prosseguir
+    txt_cartao_SD.setText("SD Erro");  // mostra no Nextion o modo selecionado
+    txt_cartao_SD.Set_background_color_bco(63488);
+    delay(10);  // aguarda 3 segundos
+    cartaoOk = false;
+    return;
+  }
+  if (SD.begin(chipSelect)) {        // Caso o cartão esteja ok é criado um arquivo no cartão SD com o nome datalog.csv em modo de escrita
+    txt_cartao_SD.setText("SD OK");  // mostra no Nextion o modo selecionado
+    txt_cartao_SD.Set_background_color_bco(1024);
+    delay(10);                                    // aguarda 3 segundos
+    myFile = SD.open("futdata.csv", FILE_WRITE);  // Abertura de arquivo "datalog.csv" para gravação
+    String cabecalho = "Numero Teste" ";" " Data" ";" " Iniciais do Jogador" ";" " Poisicao" ";" " Idade" ";" " Categoria"  ";"  "Modo" ";" "Nivel" ";" "Alvo Sorteado" ";" "Alvo Acertado"";" "Tempo LED 0" ";" "Tempo LED 10" ";" "Tempo LED TOTAL" ";" "Tempo Chute 0" ";" "tempo Alvo 0"  ";" "Tempo de Reacao" ";" "Tempo Chute-Alvo" ";" " Velocidade do Chute"; 
+    myFile.println(cabecalho);
+    myFile.close();  // Fechamos o arquivo
+    cartaoOk = true;
+  }
+}
+
+// função para desligar a barra de led
+void desliga_barra_led() {
+  is_page0 = true;
+  ///// Reinicia Matriz de LED //////////////
+  digitalWrite(matriz_led_01, HIGH);     // saída pra barra de led
+  digitalWrite(matriz_led_02, HIGH);     // saída pra barra de led
+  digitalWrite(matriz_led_03, HIGH);     // saída pra barra de led
+  digitalWrite(matriz_led_04, HIGH);     // saída pra barra de led
+  digitalWrite(matriz_led_05, HIGH);     // saída pra barra de led
+  digitalWrite(matriz_led_06, HIGH);     // saída pra barra de led
+  digitalWrite(matriz_led_07, HIGH);     // saída pra barra de led
+  digitalWrite(matriz_led_08, HIGH);     // saída pra barra de led
+  digitalWrite(matriz_led_09, HIGH);     // saída pra barra de led
+  digitalWrite(matriz_led_10, HIGH);     // saída pra barra de led
+  digitalWrite(led_alvo_equerdo, HIGH);  // Desligar a barra de led do alvo equerdo
+  digitalWrite(led_alvo_direito, HIGH);  // Desligar a barra de led do alvo direito
+  /////////////Reinicia os Sensores  ///////////////////////////////
+  digitalWrite(alvo_E1, HIGH);  // Setar o Pino de entrada digital do alvo equerdo E-1 em nível alto
+  digitalWrite(alvo_E2, HIGH);  // Setar o Pino de entrada digital do alvo equerdo E-1 em nível alto
+  digitalWrite(alvo_E3, HIGH);  // Setar o Pino de entrada digital do alvo equerdo E-1 em nível alto
+  digitalWrite(alvo_D1, HIGH);  // Setar o Pino de entrada digital do alvo direito D-1 em nível alto
+  digitalWrite(alvo_D2, HIGH);  // Setar o Pino de entrada digital do alvo direito D 0 em nível alto
+  digitalWrite(alvo_D3, HIGH);  // Setar o Pino de entrada digital do alvo direito D+1 em nível alto
+  nP = 0;                // número inicial da porta arduino mega para a barra de led, cresce de 2
+  nP_ML = 26;            // número inicial da porta arduino mega para a barra de led, cresce de 1
+  nP_MLD = 26;           // número inicial da porta arduino mega para a barra de led, cresce de 1
+  tempo_chute_0 = 0;       // tempo no momento do chute
+  tempo_alvo_0 = 0;        // tempo no momento do alvo
+  tempo_led_10 = 0;        // tempo do led 10
+  tempo_led_0 = 0;
+  tempo_led = 0;
+  tempo_chute = 0;          // tempo do chute-bola     long tempo_chute = 0; 
+  tempo_alvo = 0;  // tempo da bola-alvo
+  tempo_reacao = 0;         // tempo da bola-alvo 01   long tempo_reacao = 0;  
+  velocidade_chute = 0;           //
+  delay_01 = 0;           // auxiliar para incremento do tempo de delay
+  tempo_delay = 1000;     // tempo de delay para o acendimento de cada led, será o padrão para modo 01: tempo cosntante
+  delta_tempo = 100;      // incremento do delta delay do modo crescente e decrescente
+  delta_tempo_rando = 0;  // incremento do delta delay do modo randômico
+  rando_min = -300;       // valor mínimo para do delta delay do modo randômico
+  rando_max = 300;        // valor máximo para do delta delay do modo randômico
+  estado_botao_chute = false;
+  estado_alvo = false;
+  erro_alvo = false;
+  estado_desliga_barra_led = false;
+  estado_registro = false;
+  estado_alvo_0 = true;
+  counting = false;  // Indica se a contagem está em andamento
+  counting_chute = true; // Indica se a contagem está em andamento
+  counting_alvo = false; // Indica se a contagem está em andamento
+  counting_led_0 = false;   // Indica se a contagem está em andamento
+  modo = 0;
+  modo_dificuldade = 0;
+  tempo_chute = 0;
+  memset(buffer_modo, 0, sizeof(buffer_modo));                          // Clear the buffer, so we can start using it
+  memset(buffer_nivel, 0, sizeof(buffer_nivel));                        // Clear the buffer, so we can start using it
+  memset(buffer_tempo_chute, 0, sizeof(buffer_tempo_chute));            // Clear the buffer, so we can start using it
+  memset(buffer_velocidade_chute, 0, sizeof(buffer_velocidade_chute));  // Clear the buffer, so we can start using it
+}
+
+// funçao printar o lado do alvo Equerda / Direita
+void funcao_lado(int numero) {
+  if (numero == 6) {
+    stg_alvo_sorteado = "Esquerdo";  // String que armazena o alvo soteado para ser enviado ao Nextion
+  }
+  if (numero == 7) {  //
+    stg_alvo_sorteado = "Direito";  // String que armazena o alvo soteado para ser enviado ao Nextion
+  }
+}
+
+// Conversão da contagem de teste
+void funcao_contagem_teste() {
+  memset(buffer_cont, 0, sizeof(buffer_cont));  // Clear the buffer, so we can start using it
+  itoa(cont, buffer_cont, 10);                  // // mostra no Nextion a velocidade do chute
+  Serial2.print("txt_num_teste.txt=");  // This is sent to the nextion display to set what object name (before the dot) and what atribute (after the dot) are you going to change.
+  Serial2.print("\"");                  // Since we are sending text, and not a number, we need to send double quote before and after the actual text.
+  Serial2.print(cont);                  // This is the text you want to send to that object and atribute mentioned before.
+  Serial2.print("\"");                  // Since we are sending text, and not a number, we need to send double quote before and after the actual text.
+  Serial2.write(0xff);                  // We always have to send this three lines after each command sent to the nextion display.
+  Serial2.write(0xff);
+  Serial2.write(0xff);
+}
+
+///// calcula os tempos e envia os dados gerados no teste para o Nextion na página de resultados
+void funcao_calculo_registro() {
+  if (nP > 10 && estado_registro) {
+    tempo_chute = (tempo_chute_0 - tempo_led_10);
+    memset(buffer_tempo_chute, 0, sizeof(buffer_tempo_chute));  // Clear the buffer, so we can start using it
+    itoa(tempo_chute, buffer_tempo_chute, 10);                  // Converter a variavel temp chute de inteiro para o seu equivalente ASCII
+    /// Cálculo da velocidade do chute
+    tempo_alvo = (tempo_alvo_0 - tempo_chute_0);                /////  dividir ou não por 10
+    velocidade_chute = (distancia_alvo / tempo_alvo) * 3600;  // calcula o tempo do chute   prova_tempo_led_10
+    memset(buffer_velocidade_chute, 0, sizeof(buffer_velocidade_chute));  // Clear the buffer, so we can start using it
+    itoa(velocidade_chute, buffer_velocidade_chute, 10);                  // // mostra no Nextion a velocidade do chute
+    tempo_led = tempo_led_10 - tempo_led_0;
+    /// Apresentação dos tempos no monitor serial para conferência
+    Serial.print("tempo_chute: ");
+    Serial.println(tempo_chute);
+    Serial.print("tempo_chute_0: ");
+    Serial.println(tempo_chute_0);
+    Serial.print("tempo_led_10: ");
+    Serial.println(tempo_led_10);
+    Serial.print("tempo_led_0: ");
+    Serial.println(tempo_led_0);
+    Serial.print("tempo_led: ");
+    Serial.println(tempo_led);
+    Serial.print("Tempo Alvo_0: ");
+    Serial.println(tempo_alvo_0);
+    Serial.print("Tempo Bola-Alvo: ");
+    Serial.println(tempo_alvo);
+    Serial.print("Velocidade do chute: ");
+    Serial.print(velocidade_chute);
+    Serial.print(" km/h");
+    Serial.println();
+    Serial.println(stg_alvo_acertado);
+    Serial.print("iniciais: ");
+    Serial.println(string_iniciais);
+
+    memset(buffer_iniciais, 0, sizeof(buffer_iniciais));               // Clear the buffer, so we can start using it
+    txt_iniciais_0.getText(buffer_iniciais, sizeof(buffer_iniciais));  //pega o valor atual da variável nextion
+    memset(buffer_data, 0, sizeof(buffer_data));           // Clear the buffer, so we can start using it
+    txt_data_0.getText(buffer_data, sizeof(buffer_data));  //pega o valor atual da variável nextion
+    memset(buffer_posicao, 0, sizeof(buffer_posicao));              // Clear the buffer, so we can start using it
+    txt_posicao_0.getText(buffer_posicao, sizeof(buffer_posicao));  //pega o valor atual da variável nextion
+    memset(buffer_idade, 0, sizeof(buffer_idade));            // Clear the buffer, so we can start using it
+    txt_idade_0.getText(buffer_idade, sizeof(buffer_idade));  //pega o valor atual da variável nextion
+    memset(buffer_categoria, 0, sizeof(buffer_categoria));             // Clear the buffer, so we can start using it
+    txt_catego_0.getText(buffer_categoria, sizeof(buffer_categoria));  //pega o valor atual da variável nextion
+
+    stg_modo = buffer_modo;
+    stg_nivel = buffer_nivel;
+    stg_iniciais = buffer_iniciais;
+    stg_data = buffer_data;
+    stg_posicao = buffer_posicao;
+    stg_idade = buffer_idade;
+    stg_categoria = buffer_categoria;
+
+    ///Gravação do teste no cartão SD
+    String c = "";
+    // Se tudo estiver ok, escrevemos os dados a serem armazenados em uma String
+    leitura = (c) + (cont) + ";" + (stg_data) + ";" + (stg_iniciais) + ";" + (stg_posicao) + ";" + (stg_idade) + ";" + (stg_categoria) + ";" + (stg_modo) + ";" + (stg_nivel) + ";" + (stg_alvo_sorteado) + ";" + (stg_alvo_acertado) + ";" + (tempo_led_0) + ";" + (tempo_led_10) + ";" + (tempo_led) + ";" + (tempo_chute_0) + ";" + (tempo_alvo_0) + ";" + (tempo_chute) + ";" + (tempo_alvo) + ";" + (velocidade_chute);
+    delay(10);
+    // Se o arquivo estiver realmente aberto para leitura executamos as seguintes linhas de código
+    SD.begin(chipSelect);
+    myFile = SD.open("futdata.csv", FILE_WRITE);  // Abertura de arquivo "datalog.csv" para gravação
+    Serial.println(leitura);
+    Serial.println("-------------------------------------------------------------------------------------------------------------------------------------");  // Mostramos no monitor a linha que será escrita
+    myFile.println(leitura);                                                                                                                                  // Escrevemos no arquivos e pulamos uma linha
+    myFile.close();  // Fechamos o arquivo
+
+    /// Apresentação dos resultados na tela do Nextion
+    page3.show();
+    txt_modo_res.setText(buffer_modo);                // mostra no Nextion o modo selecionado
+    txt_nivel_res.setText(buffer_nivel);              // mostra no Nextion o nível de dificuldade selecionado
+    txt_tempo_chut.setText(buffer_tempo_chute);       // mostra no Nextion o tempo de reação do chute
+    txt_veloc_chut.setText(buffer_velocidade_chute);  // mostra no Nextion a velocidade do chute
+
+    Serial2.print("txt_n_tst_res.txt=");  // This is sent to the nextion display to set what object name (before the dot) and what atribute (after the dot) are you going to change.
+    Serial2.print("\"");                  // Since we are sending text, and not a number, we need to send double quote before and after the actual text.
+    Serial2.print(cont);                  // This is the text you want to send to that object and atribute mentioned before.
+    Serial2.print("\"");                  // Since we are sending text, and not a number, we need to send double quote before and after the actual text.
+    Serial2.write(0xff);                  // We always have to send this three lines after each command sent to the nextion display.
+    Serial2.write(0xff);
+    Serial2.write(0xff);
+
+    Serial2.print("txt_alvo_sorte.txt=");  // This is sent to the nextion display to set what object name (before the dot) and what atribute (after the dot) are you going to change.
+    Serial2.print("\"");                   // Since we are sending text, and not a number, we need to send double quote before and after the actual text.
+    Serial2.print(stg_alvo_sorteado);      // This is the text you want to send to that object and atribute mentioned before.
+    Serial2.print("\"");                   // Since we are sending text, and not a number, we need to send double quote before and after the actual text.
+    Serial2.write(0xff);                   // We always have to send this three lines after each command sent to the nextion display.
+    Serial2.write(0xff);
+    Serial2.write(0xff);
+
+    Serial2.print("txt_alvo_acert.txt=");  // This is sent to the nextion display to set what object name (before the dot) and what atribute (after the dot) are you going to change.
+    Serial2.print("\"");                   // Since we are sending text, and not a number, we need to send double quote before and after the actual text.
+    Serial2.print(stg_alvo_acertado);      // This is the text you want to send to that object and atribute mentioned before.
+    Serial2.print("\"");                   // Since we are sending text, and not a number, we need to send double quote before and after the actual text.
+    Serial2.write(0xff);                   // We always have to send this three lines after each command sent to the nextion display.
+    Serial2.write(0xff);
+    Serial2.write(0xff);
+
+    Serial.print("Numero do Teste: ");
+    Serial.println(cont);
+    Serial.println();
+    delay(1000);
+    cont = cont + 1;
+    desliga_barra_led();  // função para desligar a barra de led
+  }
+}
+
+void funcao_teste_sensores() {
+  if ((valor_sensor_alvo_E1.ping_cm()) >= 2) {               // Teste do sensor alvo E1
+    txt_alvo_E1.Set_background_color_bco(1024);
+    txt_alvo_E1.setText("E-1");
+  }
+  else {
+    txt_alvo_E1.Set_background_color_bco(63488);
+    txt_alvo_E1.setText(" ");
+  }
+ if ((valor_sensor_alvo_E2.ping_cm()) >= 2) {               // Teste do sensor alvo E2
+    txt_alvo_E2.Set_background_color_bco(1024);
+    txt_alvo_E2.setText("E 0");
+  }
+  else {
+    txt_alvo_E2.Set_background_color_bco(63488);
+    txt_alvo_E2.setText(" ");
+  }
+  if ((valor_sensor_alvo_E3.ping_cm()) >= 2) {               // Teste do sensor alvo E3
+    txt_alvo_E3.Set_background_color_bco(1024);
+    txt_alvo_E3.setText("E+1");
+  }
+  else {
+    txt_alvo_E3.Set_background_color_bco(63488);
+    txt_alvo_E3.setText(" ");
+  }
+ if ((valor_sensor_alvo_D1.ping_cm()) >= 2) {               // Teste do sensor alvo D1
+    txt_alvo_D1.Set_background_color_bco(1024);
+     txt_alvo_D1.setText("D-1");
+  }
+  else {
+    txt_alvo_D1.Set_background_color_bco(63488);
+    txt_alvo_D1.setText(" ");
+  }
+ if ((valor_sensor_alvo_D2.ping_cm()) >= 2) {               // Teste do sensor alvo D2
+    txt_alvo_D2.Set_background_color_bco(1024);
+    txt_alvo_D2.setText("D 0");
+  }
+  else {
+    txt_alvo_D2.Set_background_color_bco(63488);
+    txt_alvo_D2.setText(" ");
+  }
+  if ((valor_sensor_alvo_D3.ping_cm()) >= 2) {               // Teste do sensor alvo D3
+    txt_alvo_D3.Set_background_color_bco(1024);
+    txt_alvo_D3.setText("D+1");
+  }
+  else {
+    txt_alvo_D3.Set_background_color_bco(63488);
+    txt_alvo_D3.setText(" ");
+  }
+  if (digitalRead(botao_chute) == LOW) {                // Teste do sensor da bola
+    txt_bola.Set_background_color_bco(1024);
+    txt_bola.setText("OK");
+   }
+  else {
+    txt_bola.Set_background_color_bco(63488);
+    txt_bola.setText(" ");
+  }
+}
+
+//char iniciais)
+void funcao_cadastro_jogador() {
+  //// Leitura dos dados dos jogadores ////
+  memset(buffer_iniciais, 0, sizeof(buffer_iniciais));             // Clear the buffer, so we can start using it
+  txt_iniciais.getText(buffer_iniciais, sizeof(buffer_iniciais));  // Read the text on the object t5 and store it on the buffer
+  memset(buffer_data, 0, sizeof(buffer_data));         // Clear the buffer, so we can start using it
+  txt_data.getText(buffer_data, sizeof(buffer_data));  // Read the text on the object t5 and store it on the buffer
+  memset(buffer_posicao, 0, sizeof(buffer_posicao));            // Clear the buffer, so we can start using it
+  txt_posicao.getText(buffer_posicao, sizeof(buffer_posicao));  // Read the text on the object t5 and store it on the buffer
+  memset(buffer_idade, 0, sizeof(buffer_idade));          // Clear the buffer, so we can start using it
+  txt_idade.getText(buffer_idade, sizeof(buffer_idade));  // Read the text on the object t5 and store it on the buffer
+  memset(buffer_categoria, 0, sizeof(buffer_categoria));              // Clear the buffer, so we can start using it
+  txt_categoria.getText(buffer_categoria, sizeof(buffer_categoria));  // Read the text on the object t5 and store it on the buffer
+  string_iniciais = buffer_iniciais;
+  Serial.print("iniciais: ");
+  Serial.println(string_iniciais);
+}
+// Page change event:
+
+// If page 1 is loaded on the display, the following is going to execute:
+void funcao_btn_back_page1_PopCallback(void *ptr) {
+  page1.show();
+  is_page0 = false;
+  is_page1 = true;
+  is_page2 = false;
+  is_page3 = false;
+}  // End of press event
+
+// If page 1 is loaded on the display, the following is going to execute:
+void funcao_btn_next_page3_PopCallback(void *ptr) {
+  page3.show();
+  is_page0 = false;
+  is_page1 = false;
+  is_page2 = false;
+  is_page3 = true;
+}  // End of press event
+
+// If page 1 is loaded on the display, the following is going to execute:
+void funcao_btn_next_page0_PopCallback(void *ptr) {
+  page0.show();
+  is_page0 = true;
+  is_page1 = false;
+  is_page2 = false;
+  is_page3 = false;
+
+}  // End of press event
+
+// If page 1 is loaded on the display, the following is going to execute:
+void funcao_btn_back_page2_PopCallback(void *ptr) {
+  page2.show();
+  is_page0 = false;
+  is_page1 = false;
+  is_page2 = true;
+  is_page3 = false;
+}  // End of press event
+
+// If page 1 is loaded on the display, the following is going to execute:
+void funcao_btn_next_page1_PopCallback(void *ptr) {
+  page1.show();
+  is_page0 = false;
+  is_page1 = true;
+  is_page2 = false;
+  is_page3 = false;
+}  // End of press event
+
+// If page 1 is loaded on the display, the following is going to execute:
+void funcao_bt_back3_page0_PopCallback(void *ptr) {
+  page0.show();
+  is_page0 = true;
+  is_page1 = false;
+  is_page2 = false;
+  is_page3 = false;
+}  // End of press event
